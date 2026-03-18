@@ -1,7 +1,7 @@
 # 🎨 DynastyVR — 场景规范文档
 
 > 东方皇朝 EV 元宇宙部 · 场景设计规范
-> 版本：v1.0 | 日期：2026-03-18
+> 版本：v2.0 (UE5) | 日期：2026-03-18
 
 ---
 
@@ -80,6 +80,96 @@ L0 (Global) ← 最低基底，始终存在
 ```
 
 用户视野中同时存在多个精度层时，引擎按距离自动混合过渡。L2/L3 不增加 L0 的基础开销。
+
+---
+
+## 1.5 UE5 技术实现架构
+
+> **引擎版本：** Unreal Engine 5.4+
+> **渲染特性：** Lumen 全局光照 + Nanite 虚拟化几何体 + Virtual Shadow Maps
+
+### 1.5.1 渲染管线 (Rendering Pipeline)
+
+| 组件 | UE5 技术 | 说明 |
+|------|----------|------|
+| **全局光照** | Lumen (Software / Hardware RT) | 全动态 GI，无需烘焙；支持无限反弹；建筑间光线交互自然 |
+| **几何体** | Nanite | 建筑/地形自动 LOD；百万级多边形无需手动优化；像素级曲面细分 |
+| **阴影** | Virtual Shadow Maps (VSM) | 高分辨率阴影贴图；远距阴影无锯齿；配合 Nanite 使用 |
+| **反射** | Lumen Reflections | 屏幕空间 + 光线追踪混合反射；玻璃幕墙/水面反射真实 |
+| **抗锯齿** | TAA / TSR (Temporal Super Resolution) | 时序超分辨率；4K→8K 品质上采样 |
+
+### 1.5.2 材质系统 (Material System)
+
+| 组件 | UE5 技术 | 说明 |
+|------|----------|------|
+| **基础材质** | UE5 Material Graph | 节点化材质编辑；PBR 工作流 (Base Color / Normal / Roughness / Metallic / AO / Emissive) |
+| **材质实例** | Material Instance Dynamic (MID) | 运行时参数调整（颜色、粗糙度等）；灯光秀/天气变化驱动 |
+| **函数库** | Material Function | 可复用材质逻辑（雨滴滑落、积雪覆盖、玻璃反射） |
+| **自定义计算** | Custom Node (HLSL) | 引力透镜等特殊效果；突破 Material Graph 节点限制 |
+| **贴图规范** | Virtual Texture | 大尺寸贴图虚拟化；支持 8K+ 贴图无显存峰值问题 |
+
+### 1.5.3 地形系统 (Landscape & World Partition)
+
+| 组件 | UE5 技术 | 说明 |
+|------|----------|------|
+| **地形** | UE5 Landscape | 高度图驱动；支持 World Composition 分块 |
+| **世界分区** | World Partition | 自动流式加载；按网格单元 (Cell) 管理；支持 318 国道 3200km 长距离场景 |
+| **远景处理** | HLOD (Hierarchical LOD) | 远距离合并网格体；降低 Draw Call |
+| **水体** | Water System (Plugin) | 河流/湖泊/海洋；支持动态波浪、焦散、反射 |
+| **地形材质** | Landscape Material Layer | 多层混合（草地/岩石/雪地/沙漠）；基于坡度/高度自动混合 |
+
+### 1.5.4 植被系统 (Procedural Content Generation)
+
+| 组件 | UE5 技术 | 说明 |
+|------|----------|------|
+| **程序化生成** | PCG (Procedural Content Generation Framework) | UE5 内置；基于规则的植被分布；支持样条线沿路种植 |
+| **植被模型** | Nanite Mesh + Foliage Type | 树木/灌木使用 Nanite 化模型；支持风动 |
+| **密度控制** | PCG Density Filter | 基于地形坡度/高度/遮罩控制密度；避免道路/建筑区域穿插 |
+| **季节变体** | PCG + Material Instance | 运行时切换材质实例（绿叶→红叶→枯枝→积雪）|
+| **LOD 管理** | Foliage Culling + Nanite | Nanite 自动处理植被 LOD；远距离剔除单棵树 |
+
+### 1.5.5 后处理 (Post Process Volume)
+
+| 组件 | UE5 技术 | 说明 |
+|------|----------|------|
+| **体积设置** | Post Process Volume (Unbounded) | 全局后处理；支持区域叠加（黑洞区域覆盖）|
+| **色调映射** | ACES Tone Mapping | 电影级色调映射；日落/蓝调时刻色彩表现 |
+| **Bloom** | Bloom (Convolution) | 高光溢出；建筑灯光/霓虹效果 |
+| **径向模糊** | Lens Flare / Dirt Mask | 阳光/灯光耀斑 |
+| **DOF** | Depth of Field (Bokeh) | 照片模式景深效果 |
+| **运动模糊** | Motion Blur | 飞行/驾驶时运动感 |
+| **黑洞区域** | Local Post Process Volume | 在黑洞附近叠加专用后处理；引力透镜 Custom Node 效果 |
+
+### 1.5.6 天气系统 (Weather System)
+
+| 组件 | UE5 技术 | 说明 |
+|------|----------|------|
+| **粒子效果** | Niagara | 雨/雪/雾/沙尘；GPU 粒子支持百万级雨滴 |
+| **体积云** | Volumetric Cloud | 动态体积云；支持 ERA5 气象数据驱动云量/云高 |
+| **大气散射** | Sky Atmosphere | 物理正确的大气散射；日出日落/高海拔稀薄大气 |
+| **方向光** | Directional Light (太阳/月亮) | 物理光照单位；配合 Lumen GI |
+| **天空光照** | Sky Light + Reflection Capture | 环境光；配合 Lumen Reflections |
+| **路面湿滑** | Material Parameter Collection | 全局雨天参数驱动所有材质的湿润效果 |
+
+### 1.5.7 建筑 LOD 策略 (Nanite)
+
+| LOD 等级 | UE5 实现 | 说明 |
+|----------|----------|------|
+| **L0–L1** | Nanite 自动处理 | 远距离自动降面；无需手动制作 LOD |
+| **L2** | Nanite Full Mesh | 建筑完整模型直接导入；支持 500k+ 多边形 |
+| **L3** | Nanite + 额外细节 | 室内可用传统 LOD + Nanite 混合；支持可交互物件 |
+| **特殊处理** | Non-Nanite (传统 LOD) | 透明/折射材质（玻璃幕墙部分）使用传统 LOD 流程 |
+| **HLOD** | World Partition HLOD | 远距离建筑群合并；降低远处 Draw Call |
+
+### 1.5.8 性能优化策略
+
+| 策略 | UE5 技术 | 说明 |
+|------|----------|------|
+| **遮挡剔除** | Occlusion Culling (Hardware) | 自动遮挡剔除；无需手动放置 Portal |
+| **流式加载** | World Partition + Streaming | 按需加载区块；无缝过渡 |
+| **Nanite 裁剪** | Nanite Culling | GPU 驱动的微多边形裁剪；仅渲染可见像素 |
+| **虚拟纹理** | Virtual Texture | 大贴图按需加载；避免显存峰值 |
+| **异步加载** | Async Loading Thread | 资源后台加载；避免卡顿 |
 
 ---
 
@@ -282,7 +372,7 @@ L0 (Global) ← 最低基底，始终存在
 ## 四、黑洞可视化设计
 
 > **科学基础：** EHT (Event Horizon Telescope) 对 M87* 和 Sgr A* 的真实观测影像
-> **渲染引擎：** Unity HDRP + 自定义 Shader (Compute Shader 加速)
+> **渲染引擎：** Unreal Engine 5 (Lumen + Nanite) + Material Graph Custom Node
 
 ### 4.1 参考数据
 
@@ -301,11 +391,11 @@ L0 (Global) ← 最低基底，始终存在
 | 项 | 规格 |
 |---|------|
 | **原理** | 光子在黑洞引力场中偏折；背景星场在事件视界周围形成光环 |
-| **实现** | 自定义后处理 Shader：对背景缓冲区进行屏幕空间扭曲 |
+| **实现** | UE5 Material Editor Custom Node：在后处理材质中对背景 Scene Color 进行屏幕空间扭曲；使用 World Position Based Distance 计算偏转 |
 | **Einstein 半径** | 根据黑洞质量和相机距离动态计算；R_E = √(GM D_ls / (c² D_l D_s)) |
 | **光子环** | 在阴影边缘形成无限嵌套的压缩光环（显示 3–5 层） |
 | **背景星场** | Hipparcos 星表 → 全天投影；越靠近视界，星点越密集且扭曲 |
-| **精度** | 光线追踪 10⁶ 条光线/帧（Compute Shader 并行），确保光子环锐利 |
+| **精度** | Material Graph Custom Node 实现光线追踪计算；每帧采样足够光线确保光子环锐利；支持 GPU Compute（UE5 RHIMethod）加速 |
 
 #### B. 吸积盘 (Accretion Disk)
 
@@ -316,7 +406,7 @@ L0 (Global) ← 最低基底，始终存在
 | **多普勒增亮** | 盘面朝向观察者运动的一侧增亮 + 蓝移；背离侧变暗 + 红移（相对论性射束效应）|
 | **动态效果** | 盘面物质以开普勒速度旋转（内快外慢）；湍流噪声驱动表面亮度波动 |
 | **厚度** | 几何薄盘模型 (Novikov-Thorne)；盘高/半径比 ~0.05 |
-| **渲染** | 程序化生成：体积 Raymarching（32–64 步）+ 黑体辐射色彩映射 |
+| **渲染** | UE5 Material Graph + Custom Node：体积 Raymarching（32–64 步）+ 黑体辐射色彩映射；支持 Lumen 全局光照交互 |
 | **喷流** | M87* 型：相对论性喷流沿自转轴延伸（可选启用）|
 
 #### C. 事件视界 (Event Horizon)
@@ -363,34 +453,55 @@ L0 (Global) ← 最低基底，始终存在
 | **VR 特效** | 近距离时 HMD 微振（模拟引力波）；眼动追踪区域高亮信息 |
 | **照片模式** | 冻结场景 → 高分辨率截图 (8K) → 可分享 |
 
-### 4.5 参考着色器伪代码
+### 4.5 参考：UE5 Material Graph Custom Node 伪代码
 
 ```
-// 引力透镜后处理核心 (简化)
-float2 gravitational_lensing(float2 uv, float3 bh_pos, float mass) {
-    float2 delta = uv - project(bh_pos);
+// 引力透镜后处理 Custom Node 核心（UE5 Material Editor）
+// 节点类型：Custom (Expression) | 输出：float2 (UV Offset)
+
+float2 GravitationalLensing(float2 UV, float3 BlackHoleWorldPos, float Mass)
+{
+    float2 delta = UV - ProjectToScreen(BlackHoleWorldPos);
     float dist = length(delta);
-    float r_s = 2 * G * mass / (c * c);
+    float r_s = 2.0 * G * Mass / (c * c);
     float deflection = r_s / (dist + epsilon);
-    return uv + normalize(delta) * deflection;
+    return UV + normalize(delta) * deflection;
 }
 
-// 吸积盘体积 Raymarching (简化)
-float3 accretion_disk_raymarch(float3 ro, float3 rd, float bh_mass) {
-    float3 color = float3(0, 0, 0);
-    for (int i = 0; i < NUM_STEPS; i++) {
-        float t = near_plane + i * step_size;
-        float3 pos = ro + rd * t;
+// 吸积盘体积 Raymarching（UE5 Custom Node）
+// 节点类型：Custom (Expression) | 输出：float3 (Color)
+// 注意：UE5 Material Graph 中需启用 "Use Custom interpolator" 和足够高的 Instruction Count
+
+float3 AccretionDiskRaymarch(float3 RayOrigin, float3 RayDir, float BlackHoleMass)
+{
+    float3 color = float3(0.0, 0.0, 0.0);
+    for (int i = 0; i < NUM_STEPS; i++)
+    {
+        float t = NearPlane + float(i) * StepSize;
+        float3 pos = RayOrigin + RayDir * t;
         float r = length(pos.xz);
-        if (r > ISCO && r < OUTER_DISK) {
-            float temp = blackbody_temp(r, bh_mass);
-            float doppler = doppler_factor(pos, velocity);
-            color += blackbody_color(temp * doppler) * density(r) * step_size;
+        if (r > ISCO && r < OuterDisk)
+        {
+            float temp = BlackBodyTemp(r, BlackHoleMass);
+            float doppler = DopplerFactor(pos, Velocity);
+            color += BlackBodyColor(temp * doppler) * Density(r) * StepSize;
         }
     }
     return color;
 }
+
+// Post Process Volume 设置参考：
+// - Blend Weight: 1.0（黑洞区域全权重覆盖）
+// - 使用 Scene Color 作为背景采样
+// - Custom Node 输出接入 Emissive Color 通道
+// - 配合 Blendable Location = After Tonemapping 获得最佳效果
 ```
+
+> **UE5 实现要点：**
+> - 引力透镜效果使用 **Post Process Material**，挂载到 Post Process Volume
+> - 吸积盘作为 **独立 Actor**，使用 Material Custom Node 实现体积渲染
+> - 高性能需求部分可使用 **UE5 Compute Shader (RHIMethod)** 通过 Custom HLSL 节点实现
+> - 全局光照交互由 **Lumen** 自动处理（吸积盘发光体参与 GI 计算）
 
 ---
 
@@ -398,7 +509,7 @@ float3 accretion_disk_raymarch(float3 ro, float3 rd, float bh_mass) {
 
 | 项 | 说明 |
 |----|------|
-| **版本** | v1.0 |
+| **版本** | v2.0 (UE5 Migration) — 引擎从 Unity HDRP 迁移至 Unreal Engine 5 (Lumen + Nanite) |
 | **作者** | EV 元宇宙部 · 场景设计组 |
 | **审核** | 待技术委员会审阅 |
 | **更新周期** | 每阶段开发完成后修订 |
