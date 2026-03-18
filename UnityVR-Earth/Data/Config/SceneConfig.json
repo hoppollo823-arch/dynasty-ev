@@ -1,0 +1,113 @@
+{
+  "version": "1.0.0",
+  "project": "DynastyVR Earth",
+  "description": "东方皇朝元宇宙 VR地球场景配置 — Unity + Cesium",
+
+  "defaultStart": {
+    "name": "上海",
+    "lng": 121.4737,
+    "lat": 31.2304,
+    "alt": 50,
+    "heading": 0,
+    "pitch": -15,
+    "distance": 50000
+  },
+
+  "defaultTime": {
+    "description": "正午",
+    "hour": 12,
+    "minute": 0,
+    "second": 0,
+    "timezoneOffset": 8
+  },
+
+  "defaultWeather": {
+    "type": "clear",
+    "description": "晴天",
+    "cloudDensity": 0.1,
+    "windSpeed": 5,
+    "visibility": 50000,
+    "sunIntensity": 1.0
+  },
+
+  "skybox": {
+    "type": "dynamic",
+    "sunEnabled": true,
+    "moonEnabled": true,
+    "starsEnabled": true,
+    "atmosphereEnabled": true,
+    "godRaysEnabled": true
+  },
+
+  "cesium": {
+    "terrain": {
+      "assetId": "CesiumWorldTerrain",
+      "enableDrm": true,
+      "maxScreenSpaceError": 16,
+      "maximumCacheSizeMB": 2048
+    },
+    "imagery": {
+      "assetId": "BingMapsAerialWithLabels",
+      "enableLighting": true,
+      "enableFog": true
+    }
+  },
+
+  "vr": {
+    "renderScale": 1.2,
+    "msaa": 4,
+    "dynamicResolution": true,
+    "trackingOrigin": "floor",
+    "comfort": {
+      "vignetteEnabled": true,
+      "teleportEnabled": true,
+      "smoothLocomotion": false
+    }
+  },
+
+  "quickPlaces": [
+    "shanghai_lujiazui",
+    "beijing_forbidden_city",
+    "namucuo",
+    "dali",
+    "jiuzhaigou",
+    "zhangjiajie",
+    "guilin",
+    "xian_terracotta",
+    "hangzhou_westlake",
+    "newyork_timesquare",
+    "paris_eiffel",
+    "london_bigben",
+    "tokyo_tower",
+    "dubai_burjkhalifa",
+    "sydney_opera",
+    "great_barrier_reef",
+    "iss"
+  ],
+
+  "routes": [
+    {
+      "id": "zigong_to_bangong",
+      "name": "自贡→班公湖：朝圣之路",
+      "description": "从自贡彩灯公园出发，经川藏南线/滇藏线进藏，穿越阿里无人区到达班公湖",
+      "dataFile": "Data/Route/zigong_to_bangong.json",
+      "totalDistance": 6200,
+      "estimatedDays": 20
+    }
+  ],
+
+  "ui": {
+    "language": "zh-CN",
+    "theme": "dynasty_dark",
+    "showCoordinates": true,
+    "showAltitude": true,
+    "showDistance": true
+  },
+
+  "audio": {
+    "ambientEnabled": true,
+    "narrationEnabled": true,
+    "musicVolume": 0.6,
+    "sfxVolume": 0.8
+  }
+}

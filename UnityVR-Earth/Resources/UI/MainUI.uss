@@ -1,0 +1,373 @@
+/* ========================================================================= */
+/* DynastyVR Earth — Main UI Stylesheet                                      */
+/* 东方皇朝元宇宙部 | Dark translucent theme, rounded buttons, VR-friendly  */
+/* Place at: Assets/Resources/UI/MainUI.uss                                 */
+/* ========================================================================= */
+
+/* ---------- Root / overlay ---------- */
+
+root {
+    -unity-font: resource("UI/Fonts/NotoSansSC-Regular.ttf");
+    -unity-font-size: 16px;
+    color: rgb(230, 230, 230);
+    -unity-text-align: middle-center;
+}
+
+/* ---------- Top bar ---------- */
+
+#top-bar {
+    -unity-text-align: upper-left;
+    flex-direction: row;
+    align-items: center;
+    padding: 8px 16px;
+    margin: 12px 120px 0 120px;
+    background-color: rgba(20, 20, 30, 0.75);
+    border-radius: 12px;
+    border-width: 1px;
+    border-color: rgba(255, 255, 255, 0.08);
+}
+
+#search-field {
+    -unity-font-size: 16px;
+    flex-grow: 1;
+    margin-right: 8px;
+    padding: 6px 12px;
+    background-color: rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    border-width: 0;
+    color: rgb(240, 240, 240);
+    -unity-text-align: middle-left;
+    caret-color: rgb(255, 200, 60);
+}
+
+#search-field:hover {
+    background-color: rgba(255, 255, 255, 0.15);
+}
+
+#search-button {
+    -unity-font-size: 15px;
+    padding: 6px 20px;
+    background-color: rgba(60, 130, 255, 0.85);
+    border-radius: 8px;
+    border-width: 0;
+    color: rgb(255, 255, 255);
+    -unity-font-style: bold;
+}
+
+#search-button:hover {
+    background-color: rgba(80, 150, 255, 1.0);
+}
+
+#search-button:active {
+    background-color: rgba(40, 100, 220, 1.0);
+}
+
+/* ---------- Settings wrapper (top-right) ---------- */
+
+#settings-wrapper {
+    position: absolute;
+    top: 12px;
+    right: 16px;
+    align-items: flex-end;
+}
+
+.icon-button {
+    -unity-font-size: 20px;
+    padding: 4px 10px;
+    background-color: rgba(40, 40, 50, 0.6);
+    border-radius: 8px;
+    border-width: 0;
+    min-width: 36px;
+    min-height: 36px;
+    -unity-text-align: middle-center;
+}
+
+.icon-button:hover {
+    background-color: rgba(60, 60, 80, 0.85);
+}
+
+/* ---------- Quick-location list (left side) ---------- */
+
+#location-list {
+    position: absolute;
+    top: 80px;
+    left: 12px;
+    padding: 8px 0;
+    background-color: rgba(15, 15, 25, 0.65);
+    border-radius: 12px;
+    border-width: 1px;
+    border-color: rgba(255, 255, 255, 0.06);
+    width: 180px;
+    align-items: stretch;
+}
+
+.location-button {
+    -unity-font-size: 13px;
+    padding: 10px 14px;
+    margin: 2px 6px;
+    background-color: rgba(255, 255, 255, 0.04);
+    border-radius: 8px;
+    border-width: 0;
+    color: rgb(210, 210, 210);
+    -unity-text-align: middle-left;
+    white-space: normal;
+}
+
+.location-button:hover {
+    background-color: rgba(60, 130, 255, 0.25);
+    color: rgb(255, 255, 255);
+}
+
+.location-button:active {
+    background-color: rgba(60, 130, 255, 0.5);
+}
+
+/* ---------- Bottom mode bar ---------- */
+
+#mode-bar {
+    position: absolute;
+    bottom: 16px;
+    left: 50%;
+    translate: -50% 0;
+    flex-direction: row;
+    align-items: center;
+    padding: 8px 20px;
+    background-color: rgba(20, 20, 30, 0.80);
+    border-radius: 14px;
+    border-width: 1px;
+    border-color: rgba(255, 255, 255, 0.08);
+}
+
+#current-mode-label {
+    -unity-font-size: 18px;
+    -unity-font-style: bold;
+    margin: 0 16px;
+    min-width: 120px;
+    -unity-text-align: middle-center;
+    color: rgb(255, 200, 60);
+}
+
+/* ---------- HUD elements ---------- */
+
+.hud-top-left {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    padding: 6px 12px;
+    background-color: rgba(10, 10, 20, 0.5);
+    border-radius: 8px;
+}
+
+#fps-label {
+    -unity-font-size: 14px;
+    color: rgb(0, 255, 120);
+    -unity-text-align: middle-left;
+}
+
+.hud-arrival-container {
+    position: absolute;
+    top: 60px;
+    left: 50%;
+    translate: -50% 0;
+    padding: 12px 32px;
+    background-color: rgba(20, 20, 30, 0.85);
+    border-radius: 12px;
+    border-width: 2px;
+    border-color: rgba(255, 200, 60, 0.4);
+}
+
+#hud-arrival-label {
+    -unity-font-size: 24px;
+    -unity-font-style: bold;
+    color: rgb(255, 220, 80);
+    -unity-text-align: middle-center;
+}
+
+.hud-bottom-left {
+    position: absolute;
+    bottom: 16px;
+    left: 12px;
+    padding: 8px 14px;
+    background-color: rgba(10, 10, 20, 0.55);
+    border-radius: 10px;
+    align-items: flex-start;
+}
+
+#gps-label {
+    -unity-font-size: 13px;
+    color: rgb(180, 220, 255);
+    -unity-text-align: upper-left;
+    margin-bottom: 2px;
+}
+
+#altitude-label {
+    -unity-font-size: 13px;
+    color: rgb(180, 220, 255);
+    -unity-text-align: upper-left;
+}
+
+.hud-bottom-right {
+    position: absolute;
+    bottom: 16px;
+    right: 12px;
+    padding: 8px 14px;
+    background-color: rgba(10, 10, 20, 0.55);
+    border-radius: 10px;
+    align-items: flex-end;
+}
+
+#speed-label {
+    -unity-font-size: 13px;
+    color: rgb(200, 255, 200);
+    -unity-text-align: upper-right;
+    margin-bottom: 2px;
+}
+
+#heading-label {
+    -unity-font-size: 13px;
+    color: rgb(200, 255, 200);
+    -unity-text-align: upper-right;
+}
+
+/* ---------- Settings panel ---------- */
+
+#settings-panel {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    translate: -50% -50%;
+    width: 420px;
+    max-height: 80%;
+    padding: 24px;
+    background-color: rgba(18, 18, 28, 0.92);
+    border-radius: 16px;
+    border-width: 1px;
+    border-color: rgba(255, 255, 255, 0.1);
+    align-items: stretch;
+    overflow: visible;
+}
+
+#settings-header {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+#settings-title {
+    -unity-font-size: 22px;
+    -unity-font-style: bold;
+    color: rgb(255, 220, 80);
+}
+
+#settings-close {
+    -unity-font-size: 18px;
+    min-width: 32px;
+    min-height: 32px;
+}
+
+.settings-section {
+    margin-bottom: 18px;
+}
+
+#section-label {
+    -unity-font-size: 14px;
+    -unity-font-style: bold;
+    color: rgb(180, 180, 200);
+    margin-bottom: 6px;
+    -unity-text-align: upper-left;
+}
+
+.option-row {
+    flex-direction: row;
+    gap: 8px;
+}
+
+.option-button {
+    -unity-font-size: 13px;
+    padding: 8px 14px;
+    flex-grow: 1;
+    background-color: rgba(255, 255, 255, 0.06);
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: rgba(255, 255, 255, 0.08);
+    color: rgb(200, 200, 210);
+    -unity-text-align: middle-center;
+}
+
+.option-button:hover {
+    background-color: rgba(60, 130, 255, 0.2);
+    border-color: rgba(60, 130, 255, 0.4);
+}
+
+.option-button.selected {
+    background-color: rgba(60, 130, 255, 0.4);
+    border-color: rgba(80, 150, 255, 0.7);
+    color: rgb(255, 255, 255);
+    -unity-font-style: bold;
+}
+
+/* ---------- Location info panel ---------- */
+
+#location-info-panel {
+    position: absolute;
+    bottom: 80px;
+    left: 50%;
+    translate: -50% 0;
+    width: 480px;
+    max-height: 60%;
+    background-color: rgba(15, 15, 25, 0.92);
+    border-radius: 16px;
+    border-width: 1px;
+    border-color: rgba(255, 255, 255, 0.08);
+    overflow: hidden;
+}
+
+.info-scrollview {
+    padding: 20px 24px 0 24px;
+}
+
+.info-photo-container {
+    margin-bottom: 16px;
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.info-photo {
+    width: 100%;
+    height: 200px;
+    -unity-background-scale-mode: scale-to-fit;
+    border-radius: 12px;
+}
+
+#info-name {
+    -unity-font-size: 22px;
+    -unity-font-style: bold;
+    color: rgb(255, 220, 80);
+    margin-bottom: 8px;
+    -unity-text-align: upper-left;
+}
+
+.info-desc {
+    -unity-font-size: 14px;
+    color: rgb(210, 210, 215);
+    -unity-text-align: upper-left;
+    white-space: normal;
+    margin-bottom: 16px;
+    line-height: 1.6;
+}
+
+#info-close {
+    -unity-font-size: 15px;
+    margin: 0 24px 16px 24px;
+    padding: 10px;
+    background-color: rgba(255, 80, 80, 0.6);
+    border-radius: 10px;
+    border-width: 0;
+    color: rgb(255, 255, 255);
+    -unity-font-style: bold;
+}
+
+#info-close:hover {
+    background-color: rgba(255, 80, 80, 0.85);
+}

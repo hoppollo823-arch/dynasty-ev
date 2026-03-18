@@ -1,0 +1,36 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements">
+    <!-- DynastyVR Earth — Main UI Template -->
+    <!-- This UXML is optional; MainUIManager builds UI procedurally if not assigned. -->
+    <!-- You can design visually in Unity UI Builder and assign via the Inspector. -->
+
+    <Style src="MainUI.uss" />
+
+    <ui:VisualElement name="root" class="root-container">
+        <!-- Top bar (search) -->
+        <ui:VisualElement name="top-bar" class="horizontal-bar">
+            <ui:TextField name="search-field" placeholder-text="🔍 搜索地点 Search location..." />
+            <ui:Button name="search-button" text="搜索" />
+        </ui:VisualElement>
+
+        <!-- Settings button (top-right) -->
+        <ui:VisualElement name="settings-wrapper" class="top-right">
+            <ui:Button name="settings-button" text="⚙️" class="icon-button" />
+        </ui:VisualElement>
+
+        <!-- Quick location list (left) -->
+        <ui:VisualElement name="location-list" class="side-panel">
+            <ui:Button name="btn-loc-Shanghai"   text="上海\nShanghai"     class="location-button" />
+            <ui:Button name="btn-loc-NewYork"    text="纽约\nNew York"     class="location-button" />
+            <ui:Button name="btn-loc-PangongLake"text="班公湖\nPangong Lake" class="location-button" />
+            <ui:Button name="btn-loc-MtKailash"  text="冈仁波齐\nMt. Kailash" class="location-button" />
+            <ui:Button name="btn-loc-DarkSkyPark"text="暗夜公园\nDark Sky Park" class="location-button" />
+        </ui:VisualElement>
+
+        <!-- Bottom mode bar -->
+        <ui:VisualElement name="mode-bar" class="bottom-center">
+            <ui:Button name="mode-prev" text="◀" class="icon-button" />
+            <ui:Label  name="current-mode-label" text="飞行 Fly" />
+            <ui:Button name="mode-next" text="▶" class="icon-button" />
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>
