@@ -1,0 +1,44 @@
+// DynastyVR.uproject — Unreal Engine 5.4 Project File
+{
+	"FileVersion": 3,
+	"EngineAssociation": "5.4",
+	"Category": "Games",
+	"Description": "东方皇朝元宇宙 — 数字孪生宇宙 | DynastyVR Digital Earth Metaverse",
+	"Modules": [
+		{
+			"Name": "DynastyVR",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	],
+	"Plugins": [
+		{
+			"Name": "CesiumForUnreal",
+			"Enabled": true
+		},
+		{
+			"Name": "OpenXR",
+			"Enabled": true
+		},
+		{
+			"Name": "Niagara",
+			"Enabled": true
+		},
+		{
+			"Name": "EnhancedInput",
+			"Enabled": true
+		},
+		{
+			"Name": "CommonUI",
+			"Enabled": true
+		},
+		{
+			"Name": "PCG",
+			"Enabled": true
+		}
+	],
+	"TargetPlatforms": [
+		"Win64",
+		"Android"
+	]
+}

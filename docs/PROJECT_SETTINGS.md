@@ -1,123 +1,188 @@
-# 🎮 DynastyVR — Unity 项目设置指南
+# 🎮 DynastyVR — Unreal Engine 5 项目设置指南
 
 > 东方皇朝 EV 元宇宙部 · 项目技术配置文档
 > 更新日期：2026-03-18
+> **引擎迁移：Unity → Unreal Engine 5.4**
 
 ---
 
-## 1. Unity 版本与模块
+## 1. UE5 版本与模块
 
 | 项目 | 配置 |
 |------|------|
-| Unity 版本 | **2022.3 LTS** (最新补丁版本) |
-| 渲染管线 | **HDRP 14.x** (High Definition Render Pipeline) |
-| 输入系统 | **Unity Input System** (新系统, 非旧 Input Manager) |
-| XR 插件 | OpenXR + XR Interaction Toolkit |
-| 最低支持平台 | Windows 10 (64-bit) / Quest 3 (Android) |
+| 引擎版本 | **Unreal Engine 5.4** (最新补丁版本) |
+| 项目模板 | **VR Template** (UE5 VR项目起点) |
+| 渲染特性 | **Lumen GI + Nanite + World Partition** |
+| 输入系统 | Enhanced Input System (UE5 原生) |
+| XR 插件 | OpenXR + SteamVR / Meta Quest Link |
+| 物理引擎 | **Chaos Physics** (UE5 默认) |
+| 粒子系统 | **Niagara** |
+| 最低支持平台 | Windows 10 (64-bit) / Quest 3 (Air Link) |
 | 推荐开发平台 | Windows 11 (RTX 3080+) / Ubuntu 22.04 |
 
-### 必装模块
-- Windows Build Support (IL2CPP)
-- Android Build Support (IL2CPP) — Quest 端
-- Documentation (离线文档)
-- Language Pack — Chinese (Simplified)
+### 必装模块 (UE5 Feature Packs)
+- Engine (核心引擎)
+- Lumen (全局光照)
+- Nanite (虚拟几何体)
+- World Partition (大世界)
+- PCG (程序化内容生成)
+- EnhancedInput (输入系统)
+- OpenXR (VR支持)
+- Niagara (粒子特效)
+- ChaosPhysics (物理引擎)
+- CommonUI (通用UI框架)
 
 ---
 
-## 2. HDRP 渲染管线配置
+## 2. Lumen 全局光照配置
 
-### 2.1 HDRP Asset 设置
+### 2.1 Project Settings → Rendering
 
-创建 HDRP Volume Profile 路径：
 ```
-Assets/Settings/HDRP/
-├── DynastVR_HDRenderPipelineAsset.asset
-├── DefaultVolumeProfile.asset
-├── Quality/
-│   ├── Ultra.asset
-│   ├── High.asset
-│   ├── Medium.asset
-│   └── Low.asset
-└── Compositor/
-    └── CompositorSettings.asset
+Engine → Rendering:
+├── Global Illumination
+│   ├── Dynamic Global Illumination Method: Lumen
+│   ├── Reflection Method: Lumen
+│   ├── Lumen Scene
+│   │   ├── Mesh Distance Fields: ✅ Enabled
+│   │   ├── Use Hardware Ray Tracing when available: ✅
+│   │   ├── Lumen Ray Lighting Mode: Hit Lighting for Reflections
+│   │   └── Final Gather Quality: 4 (High)
+│   └── Lumen Global Illumination
+│       ├── Lumen Scene Detail: 8.0
+│       ├── Lumen Final Gather Quality: 4.0
+│       ├── Lumen Surface Cache: ✅ Enabled
+│       ├── Two Sided Geometry: ✅ Enabled
+│       └── Fallback Relative Error: 0.2
+│
+├── Global Illumination Fallbacks
+│   ├── Dynamic GI Method Fallback: Screen Space (For Low Quality)
+│   └── Lumen Fallback: Screen Space
+│
+└── Ray Tracing (Hardware RT, optional)
+    ├── Enable Ray Tracing: ✅ (RTX 2080+)
+    ├── Ray Tracing Reflections: ✅
+    ├── Ray Tracing Shadows: ✅
+    └── Ray Tracing Ambient Occlusion: ✅
 ```
 
 ### 2.2 关键渲染参数
 
-| 参数 | Ultra (PC VR) | High | Medium | Low (Quest Link) |
-|------|---------------|------|--------|------------------|
-| 最大分辨率 | 4K × 4K | 2K × 2K | 1080p | 1080p |
-| 光线追踪 | 全光追 | 混合 | 仅 AO | 关闭 |
-| 阴影分辨率 | 4096 | 2048 | 1024 | 512 |
-| 阴影距离 | 500m | 300m | 150m | 100m |
-| 云层质量 | 全体积 | 半体积 | 2D叠加 | 关闭 |
-| LOD 层级 | 8 | 6 | 4 | 3 |
+| 参数 | Epic (PC VR) | High | Medium | Low (Quest Link) |
+|------|--------------|------|--------|------------------|
+| 全局光照 | Lumen (HW RT) | Lumen (SW RT) | Lumen (Fallback) | Screen Space |
+| 反射 | Lumen (Hit Lighting) | Lumen (Surface Cache) | Screen Space | Screen Space |
+| 阴影 | Virtual Shadow Maps | VSM (Reduced) | Cascaded Shadow | Cascaded Shadow |
+| 阴影距离 | 50000cm | 30000cm | 15000cm | 10000cm |
+| 云层 | Volumetric Clouds | Volumetric (Low) | 2D Sky | Flat Sky |
+| Nanite | ✅ 全启用 | ✅ 核心资产 | 部分 | ❌ 关闭 |
+| TSR | ✅ 启用 | ✅ 启用 | ✅ 启用 | ❌ 关闭 |
 | 帧率目标 | 90fps | 90fps | 72fps | 72fps |
 
-### 2.3 光照设置
+### 2.3 虚拟阴影贴图 (VSM)
 
 ```
-光照配置:
-├── 环境光: HDRI Sky (动态天空盒)
-├── 方向光: 日光主光源 (Shadow = Contact Shadows + Cascade)
-├── 反射探针: Box Projection + 混合距离 20m
-├── 光探针: Adaptive Probe Volumes (APV)
-├── 光追反射: Max 4 bounces, Roughness 0.0-1.0
-└── 全局光照: Screen Space GI + Baked 混合
+Engine → Rendering → Virtual Texture Shadows:
+├── Enable Virtual Shadow Maps: ✅
+├── Enable Per Object Casts Contact Shadows: ✅
+├── Max Physical Pages (2^N): 20
+├── Cache Update Rate: 2.0
+└── Allow Hardware Ray Tracing When Available: ✅
 ```
 
-### 2.4 后处理效果
+### 2.4 Nanite 设置
 
 ```
-后处理体积 (Global Volume):
-├── Bloom (阈值 0.9, 强度 0.3)
-├── Tonemapping (ACES Filmic)
-├── Color Grading (可动态切换日夜)
-├── Vignette (关闭, VR 中会引起不适)
-├── Motion Blur (关闭, VR 中会引起不适)
-├── Depth of Field (仅过场动画启用)
-├── Ambient Occlusion (GTAO, 半径 0.5m)
-├── Screen Space Reflections (中等质量)
-├── Subsurface Scattering (皮肤、植被)
-└── Film Grain (关闭)
+Project Settings → Nanite:
+├── Default Nanite Tessellation: Disabled (for now)
+├── Allow Tessellation: (future use)
+├── Max Tessellation Factor: 64
+├── Material Compatibility:
+│   ├── Support Unlit Materials: ✅
+│   └── Support World Position Offset: ✅
+└── Fallback Relative Error: 0.2
 ```
 
 ---
 
-## 3. XR / VR 配置
+## 3. World Partition 配置
 
-### 3.1 XR 插件架构
+### 3.1 大世界设置
 
 ```
-XR Stack:
-├── OpenXR Plugin
-│   ├── Meta Quest Touch Controller Profile
-│   ├── Hand Tracking Profile
-│   └── Eye Tracking Profile
-├── XR Interaction Toolkit (2.5+)
-│   ├── XRRayInteractor (远程交互)
-│   ├── XRDirectInteractor (直接交互)
-│   ├── XRSimpleInteractable
-│   └── XR Rig (玩家 rig)
-├── XR Input (新 Input System)
-│   ├── Action Map: VRControls
-│   │   ├── PrimaryAction (Trigger)
-│   │   ├── SecondaryAction (Grip)
-│   │   ├── Thumbstick (Locomotion)
-│   │   ├── PrimaryButton (A/X)
-│   │   ├── SecondaryButton (B/Y)
-│   │   └── Haptic (反馈)
-│   └── Locomotion System
-│       ├── Teleportation
-│       ├── Continuous Move
-│       └── Snap Turn
-└── 多平台适配层
-    ├── PC VR (SteamVR / Oculus Link)
-    ├── Standalone (Quest 3)
-    └── WebXR (远期)
+World Settings → World Partition:
+├── Enable World Partition: ✅
+├── Runtime Grid Settings:
+│   ├── Grid (0, 0): Grid Size = 25600m, Loading Range = 12800m
+│   ├── HLOD:
+│   │   ├── Enable HLOD: ✅
+│   │   ├── HLOD Volume: (auto-generated)
+│   │   └── HLOD Level 1 Distance: 5000m
+│   └── Streaming Source:
+│       ├── Player: ✅ (跟随玩家位置流式加载)
+│       └── Min/Max Draw Distance: 1000m / 50000m
+├── Spatial Loading:
+│   ├── Loading Range: 12800m
+│   └── Cell Size: 256m
+└── Data Layers (用于分区域控制):
+    ├── Layer: "City_Shanghai" (LOD0 全精度)
+    ├── Layer: "City_NewYork" (LOD0 全精度)
+    ├── Layer: "City_Generic" (LOD1 中精度)
+    └── Layer: "Nature_Rural" (LOD2 低精度)
 ```
 
-### 3.2 VR 交互规则
+### 3.2 HLOD (Hierarchical Level of Detail)
+
+```
+HLOD 配置:
+├── Level 0: 原始模型 (0-2km)
+├── Level 1: 简化模型 (2-5km) — 合并为 instanced meshes
+├── Level 2: 代理模型 (5-15km) — billboard + 简单几何
+└── Level 3: 极简 (15km+) — 仅地形 + 颜色块
+```
+
+---
+
+## 4. VR 配置 (UE5 VR Template)
+
+### 4.1 VR 模板设置
+
+```
+Project Settings → Maps & Modes:
+├── Default GameMode: BP_MotionControllerGameMode
+├── Default PawnClass: BP_MotionControllerPawn
+├── Start in VR: ✅
+└── Enable VR Preview: ✅
+```
+
+### 4.2 Enhanced Input 配置
+
+```
+Engine → Input → Enhanced Input:
+├── Default Input Component Class: EnhancedInputComponent
+├── Default Player Input Class: EnhancedPlayerInput
+├── Input Mapping Contexts:
+│   ├── IMC_VR_Default
+│   │   ├── IA_Move → Thumbstick (L)
+│   │   ├── IA_Turn → Thumbstick (R)
+│   │   ├── IA_GripLeft → Grip (L)
+│   │   ├── IA_GripRight → Grip (R)
+│   │   ├── IA_TriggerL → Trigger (L)
+│   │   ├── IA_TriggerR → Trigger (R)
+│   │   ├── IA_Menu → Menu Button
+│   │   ├── IA_Jump → (Reserved)
+│   │   └── IA_Crouch → (Reserved)
+│   └── IMC_VR_Vehicle
+│       ├── IA_Steering → Grip (L+R rotation)
+│       ├── IA_Throttle → Trigger (R)
+│       ├── IA_Brake → Trigger (L)
+│       └── IA_GearShift → Thumbstick (R)
+└── Default Input Dead Zones:
+    ├── Move: 0.25
+    └── Turn: 0.25
+```
+
+### 4.3 VR 交互规则
 
 **运动方式优先级：**
 1. 飞行器/车辆内 → 座舱跟随，无独立 locomotion
@@ -125,87 +190,206 @@ XR Stack:
 3. 地球浏览 → 手势缩放/拖拽 (Google Earth 风格)
 
 **交互原则：**
-- 所有 UI 必须支持 World Space Canvas (VR 空间 UI)
+- 所有 UI 使用 World Space Widget (3D UI)
 - 菜单呼出：左手菜单按钮 / 手势 (手掌朝上)
-- 抓取物体：Grip 键 + 物理碰撞
+- 抓取物体：Grip 键 + Chaos 物理碰撞
 - 驾驶车辆：双手模拟方向盘 + 油门扳机
+- 触觉反馈：OpenXR Haptic Output
 
 ---
 
-## 4. 目录结构规范
+## 5. UE5 项目目录结构
 
 ```
-UnityProject/
-├── Assets/
-│   ├── Scripts/
-│   │   ├── Core/           # 核心系统 (Manager, Singleton, Events)
-│   │   ├── GeoEngine/      # 地球引擎 (Cesium集成, 地形)
-│   │   ├── RoadEngine/     # 路网引擎 (OSM, 车辆物理)
-│   │   ├── CosmosEngine/   # 宇宙引擎 (天体, 黑洞)
-│   │   ├── BuildSystem/    # 建造系统 (UGC, 地块)
-│   │   ├── VR/             # VR交互脚本
-│   │   ├── UI/             # UI控制器
-│   │   └── [Feature]/      # 各功能模块独立文件夹
-│   ├── Scenes/
-│   │   ├── Main.unity              # 主场景
-│   │   ├── Loading.unity           # 加载场景
-│   │   ├── MainMenu.unity          # 主菜单
-│   │   ├── Demo_Earth.unity        # 地球演示
-│   │   ├── Demo_RoadTrip.unity     # 自驾演示
-│   │   ├── Demo_Cosmos.unity       # 宇宙演示
-│   │   └── Test_Room.unity         # VR测试房间
-│   ├── Prefabs/
-│   │   ├── Vehicles/       # 车辆预制体
-│   │   ├── Aircraft/       # 飞行器预制体
-│   │   ├── Environment/    # 环境预制体
-│   │   └── Characters/     # 角色预制体
-│   ├── Materials/
-│   │   ├── Terrain/        # 地形材质
-│   │   ├── Water/          # 水体材质
-│   │   ├── Vehicles/       # 车辆材质
-│   │   ├── Sky/            # 天空/大气材质
-│   │   └── PostProcess/    # 后处理配置
-│   ├── Textures/
-│   ├── Models/
-│   ├── Shaders/            # 自定义 Shader
-│   ├── Audio/
-│   ├── Resources/          # 运行时加载资源
-│   ├── StreamingAssets/    # 流式加载 (Cesium tiles cache)
-│   ├── Editor/             # 编辑器扩展
-│   └── Plugins/            # 第三方插件
-├── Packages/
-│   └── manifest.json       # UPM 包依赖
-├── ProjectSettings/        # Unity 项目设置
-├── docs/                   # 项目文档 (repo root)
-└── .gitignore
+UE5Project/
+├── Source/                          # C++ 模块
+│   ├── DynastyVR/                   # 主模块
+│   │   ├── DynastyVR.Build.cs
+│   │   ├── DynastyVRGameMode.cpp/.h
+│   │   └── DynastyVRPlayerController.cpp/.h
+│   ├── GeoEngine/                   # 地球引擎 (Cesium集成, 地形)
+│   │   ├── GeoEngine.Build.cs
+│   │   ├── CesiumTileManager.cpp/.h
+│   │   ├── TerrainGenerator.cpp/.h
+│   │   └── AtmosphereSystem.cpp/.h
+│   ├── RoadEngine/                  # 路网引擎 (OSM, 车辆物理)
+│   │   ├── RoadEngine.Build.cs
+│   │   ├── RoadNetwork.cpp/.h
+│   │   ├── VehiclePhysicsComponent.cpp/.h
+│   │   └── RoutePlanner.cpp/.h
+│   ├── CosmosEngine/                # 宇宙引擎 (天体, 黑洞)
+│   │   ├── CosmosEngine.Build.cs
+│   │   ├── CelestialBody.cpp/.h
+│   │   ├── BlackHoleRenderer.cpp/.h
+│   │   └── StarFieldSystem.cpp/.h
+│   ├── BuildSystem/                 # 建造系统 (UGC, 地块)
+│   │   ├── BuildSystem.Build.cs
+│   │   ├── ConstructionComponent.cpp/.h
+│   │   ├── LandPlotManager.cpp/.h
+│   │   └── ModularBuildingActor.cpp/.h
+│   └── Social/                      # 社交系统 (多人, Avatar)
+│       ├── Social.Build.cs
+│       ├── MultiplayerSession.cpp/.h
+│       ├── VoiceChatComponent.cpp/.h
+│       └── AvatarSystem.cpp/.h
+│
+├── Content/                         # 资产目录 (Git LFS)
+│   ├── DynastyVR/
+│   │   ├── Maps/
+│   │   │   ├── MainMenu.umap
+│   │   │   ├── EarthDemo.umap
+│   │   │   ├── RoadTripDemo.umap
+│   │   │   ├── CosmosDemo.umap
+│   │   │   └── TestLevel.umap
+│   │   ├── Blueprints/
+│   │   │   ├── Vehicles/
+│   │   │   ├── Aircraft/
+│   │   │   ├── Characters/
+│   │   │   ├── Environment/
+│   │   │   └── UI/
+│   │   ├── Materials/
+│   │   │   ├── M_Terrain_Base
+│   │   │   ├── M_Water_Ocean
+│   │   │   ├── M_Vehicle_PBR
+│   │   │   ├── M_Sky_Atmosphere
+│   │   │   └── MI_*/ (材质实例)
+│   │   ├── Textures/
+│   │   │   ├── T_Terrain/
+│   │   │   ├── T_Sky/
+│   │   │   └── T_UI/
+│   │   ├── Models/
+│   │   │   ├── SM_Vehicles/
+│   │   │   ├── SM_Aircraft/
+│   │   │   └── SM_Environment/
+│   │   ├── Audio/
+│   │   │   ├── Engine/
+│   │   │   ├── Ambient/
+│   │   │   └── Music/
+│   │   ├── Niagara/
+│   │   │   ├── NS_Weather_Rain
+│   │   │   ├── NS_Weather_Snow
+│   │   │   ├── NS_BlackHole_Accretion
+│   │   │   └── NS_Engine_Exhaust
+│   │   └── DataAssets/
+│   │       ├── DA_VehicleStats
+│   │       ├── DA_LocationData
+│   │       └── DA_WeatherPresets
+│
+├── Plugins/
+│   ├── CesiumForUnreal/             # Cesium for Unreal 插件
+│   │   ├── Source/
+│   │   ├── Content/
+│   │   └── CesiumForUnreal.uplugin
+│   └── (其他第三方插件)
+│
+├── Config/                          # 配置文件
+│   ├── DefaultEngine.ini
+│   ├── DefaultGame.ini
+│   ├── DefaultInput.ini
+│   ├── DefaultScalability.ini
+│   ├── DefaultVR.ini
+│   └── Input/
+│       └── DefaultInput.ini
+│
+├── Plugins/ (Cesium for Unreal)     # (已包含在上方 Plugins/)
+│
+├── DynastyVR.uproject               # 项目文件
+├── .gitignore
+└── docs/                            # 项目文档 (repo root)
 ```
 
 ---
 
-## 5. 核心依赖包 (Packages/manifest.json)
+## 6. Config 文件配置
 
-```json
-{
-  "dependencies": {
-    "com.unity.render-pipelines.high-definition": "14.0.11",
-    "com.unity.inputsystem": "1.7.0",
-    "com.unity.xr.openxr": "1.9.1",
-    "com.unity.xr.interaction.toolkit": "2.5.2",
-    "com.unity.xr.hands": "1.3.0",
-    "com.unity.cesium": "1.7.0",
-    "com.unity.probuilder": "5.2.2",
-    "com.unity.textmeshpro": "3.0.6",
-    "com.unity.addressables": "1.21.19",
-    "com.unity.shadergraph": "14.0.11",
-    "com.unity.visualeffectgraph": "14.0.11",
-    "com.unity.ai.navigation": "1.1.5"
-  }
-}
+### 6.1 DefaultEngine.ini (核心渲染)
+
+```ini
+[/Script/Engine.RendererSettings]
+r.DynamicGlobalIlluminationMethod=1          ; Lumen
+r.ReflectionMethod=1                          ; Lumen Reflections
+r.Shadow.Virtual.Enable=1                     ; Virtual Shadow Maps
+r.Nanite.AllowTessellation=0                  ; Tessellation off
+r.Lumen.HardwareRayTracing.Enable=1           ; HW Ray Tracing
+r.Lumen.FinalGather.Quality=4.0               ; High quality
+r.Lumen.FinalGather.ScreenTraces=1
+r.Lumen.TraceMeshSDFs=1
+r.LumenScene.SurfaceCache.MeshCardsMinSize=10
+r.RayTracing.GlobalIllumination=1             ; RT GI
+r.Lumen.Reflections.Allow=1
+r.Lumen.Reflections.MaxBounces=4
+r.Lumen.DiffuseIndirect.Allow=1
+
+[/Script/Engine.RendererSettings]
+r.TemporalAA.Quality=1                        ; TSR High
+r.TemporalAA.Upsampling=1                     ; TSR Upsampling
+r.TemporalAA.Algorithm=1                      ; TCBAA (new)
+r.TemporalAAFilterSize=0.5
+
+[/Script/Engine.RendererSettings]
+r.Streaming.PoolSize=4000                     ; Texture pool 4GB
+r.ViewDistanceScale=1.0
+r.ViewDistanceScale.Exponent=1.0
+
+[/Script/Engine.VirtualTexturePoolSettings]
+TexturesPoolSizeLimit=4000                    ; 4GB VT pool
+
+[/Script/EngineSettings.GeneralProjectSettings]
+ProjectName=DynastyVR
+ProjectVersion=0.1.0
+ProjectID={GENERATE_NEW_GUID}
+```
+
+### 6.2 DefaultGame.ini
+
+```ini
+[/Script/EngineSettings.GeneralProjectSettings]
+ProjectName=DynastyVR
+ProjectDescription=东方皇朝元宇宙 - 数字孪生宇宙
+ProjectVersion=0.1.0
+CompanyName=Dynasty Entertainment
+ProjectDisplayedTitle=DynastyVR
+
+[/Script/UnrealEd.ProjectPackagingSettings]
+BuildConfiguration=PPBC_Development
+StagingDirectory=(Path="")
+FullRebuild=False
+ForDistribution=False
+UsePakFile=True
+GenerateChunks=True
+ChunkBasedInstall=True
+CookEverythingInContentDirectory=False
+```
+
+### 6.3 DefaultInput.ini (Enhanced Input)
+
+```ini
+[/Script/Engine.InputSettings]
+DefaultInputComponentClass=/Script/EnhancedInput.EnhancedInputComponent
+
+[/Script/EnhancedInput.EnhancedInputUserSettings]
+bEnableDefaultMappingContext=True
+DefaultMappingContext=/Game/Input/IMC_VR_Default.IMC_VR_Default
+```
+
+### 6.4 DefaultVR.ini
+
+```ini
+[/Script/Engine.RendererSettings]
+vr.InstancedStereoEnabled=1                    ; 基于实例的立体渲染
+vr.HiddenAreaMask=1                           ; VR遮罩
+vr.VROnlyMode=1                               ; 仅VR模式
+
+[/Script/OculusHMD.OculusHMDSettings]
+bInitHmdOnStartUp=1
+bUseHealthAndSafetyWarning=True
+PixelDensity=1.0
+SuggestedPixelDensity=1.25
 ```
 
 ---
 
-## 6. 性能预算
+## 7. 性能预算
 
 ### PC VR (推荐配置: RTX 3080 + i7-12700K)
 
@@ -214,12 +398,14 @@ UnityProject/
 | 帧率 | ≥90 fps (11.1ms/frame) |
 | GPU 时间 | < 10ms |
 | CPU 时间 | < 8ms |
-| 内存 (GPU) | < 10 GB |
+| 内存 (GPU VRAM) | < 10 GB |
 | 内存 (RAM) | < 16 GB |
 | Draw Calls | < 3000 |
-| Triangles/Frame | < 5M |
+| Triangles/Frame | < 10M (Nanite 可承受更多) |
+| Texture Pool | 4GB |
+| Nanite Mesh Cards | < 2000/帧 |
 
-### Quest 3 (Stand-alone)
+### Quest 3 (Air Link / Link)
 
 | 指标 | 预算 |
 |------|------|
@@ -228,29 +414,30 @@ UnityProject/
 | CPU 时间 | < 10ms |
 | 内存 (RAM) | < 6 GB |
 | Draw Calls | < 500 |
-| Triangles/Frame | < 750K |
+| Triangles/Frame | < 2M |
+| Nanite | 关闭 (fallback to LOD) |
 
 ---
 
-## 7. 版本控制约定
+## 8. 版本控制约定
 
-- Unity 场景文件使用 YAML 序列化 (文本格式)
-- 二进制大文件 (textures, models) → **Git LFS**
+- UE5 资产文件 (.uasset, .umap) 使用 **Git LFS** 追踪
+- C++ 源码直接 git tracking
+- Config 文件直接 git tracking
 - LFS 追踪规则:
   ```
+  *.uasset filter=lfs diff=lfs merge=lfs -text
+  *.umap filter=lfs diff=lfs merge=lfs -text
   *.png filter=lfs diff=lfs merge=lfs -text
   *.jpg filter=lfs diff=lfs merge=lfs -text
-  *.tif filter=lfs diff=lfs merge=lfs -text
   *.fbx filter=lfs diff=lfs merge=lfs -text
-  *.blend filter=lfs diff=lfs merge=lfs -text
   *.wav filter=lfs diff=lfs merge=lfs -text
   *.mp3 filter=lfs diff=lfs merge=lfs -text
-  *.asset filter=lfs diff=lfs merge=lfs -text
   ```
 
 ---
 
-## 8. 分支策略
+## 9. 分支策略
 
 ```
 main          ← 稳定版本, 可部署
