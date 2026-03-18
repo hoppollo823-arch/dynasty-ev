@@ -1,7 +1,9 @@
 # ⚡ DynastyVR — 性能优化技术规范
 
 > 东方皇朝 EV 元宇宙部 · 性能工程组
-> 版本：v1.0 | 2026-03-18
+> 引擎：Unreal Engine 5.4+
+> 版本：v2.0 | 2026-03-18
+> 迁移说明：从 Unity 迁移至 UE5，所有技术实现已更新为 UE5 原生方案
 
 ---
 
@@ -13,7 +15,7 @@
 |------|----------|----------|------|
 | PC VR（高配） | 120 fps | 90 fps | RTX 4080+ / Quest Pro Link |
 | PC VR（标准） | 90 fps | 72 fps | RTX 3060+ / Quest 2 Link |
-| Standalone VR（Quest 3） | 90 fps | 72 fps | 原生渲染，Mobile SRP |
+| Standalone VR（Quest 3） | 90 fps | 72 fps | 原生渲染，UE5 Mobile Forward Renderer |
 | Standalone VR（Quest 2） | 72 fps | 60 fps | 降级模式，自动降质 |
 | 移动端（手机/平板） | 30 fps | 24 fps | 降级模式，简化渲染 |
 
@@ -52,7 +54,7 @@
 
 ### 2.1 LOD 层级设计（10 级）
 
-DynastyVR 使用 **Cesium 3D Tiles + 自定义 LOD 系统**，实现从太空到街景的无缝缩放。
+DynastyVR 使用 **Cesium 3D Tiles + Nanite 自动 LOD + 传统 LOD 混合系统**，实现从太空到街景的无缝缩放。Nanite 处理高精度几何体的自动 LOD 降级，传统 LOD 用于 Cesium Tile 流式切换。
 
 | LOD | 覆盖范围 | 地形精度 | 影像分辨率 | 数据源 | 典型用例 |
 |-----|----------|----------|------------|--------|----------|
@@ -69,32 +71,34 @@ DynastyVR 使用 **Cesium 3D Tiles + 自定义 LOD 系统**，实现从太空到
 
 #### LOD 切换策略
 
-```csharp
-// 基于相机高度的 LOD 索引计算
-int CalculateLOD(float cameraAltitude)
+```cpp
+// 基于相机高度的 LOD 索引计算 (UE5 C++)
+int32 ADynastyTerrainActor::CalculateLOD(float CameraAltitude)
 {
     // 对数插值：高度越高，LOD越粗
     // LOD 9 (街景): 0-20m
     // LOD 0 (全球): > 2,000,000m
-    float t = Mathf.Log10(Mathf.Max(cameraAltitude, 1f));
-    int lod = Mathf.Clamp(9 - Mathf.FloorToInt(t * 2.5f), 0, 9);
-    return lod;
+    float T = FMath::LogX(10.0f, FMath::Max(CameraAltitude, 1.0f));
+    int32 LOD = FMath::Clamp(9 - FMath::FloorToInt(T * 2.5f), 0, 9);
+    return LOD;
 }
 
-// 基于屏幕空间误差 (SSE) 的动态调整
-float CalculateSSE(Vector3 worldPos, float pixelSize, float distance)
+// 基于屏幕空间误差 (SSE) 的动态调整 (Nanite 自动处理大部分情况)
+float ADynastyTerrainActor::CalculateSSE(const FVector& WorldPos, float PixelSize, float Distance)
 {
     // Screen Space Error: 几何误差在屏幕上的像素投影
-    float projectedError = (pixelSize / distance) * screenHeight;
-    return projectedError;
+    // Nanite 内部自动管理，此处仅用于 Cesium Tile 切换决策
+    float ProjectedError = (PixelSize / Distance) * ScreenHeight;
+    return ProjectedError;
 }
 ```
 
 #### LOD 混合过渡
 
-- **Dithering 混合**：高 LOD → 低 LOD 时使用屏幕空间抖动过渡（避免 popping）
+- **Nanite 自动 LOD + Dithering 混合**：Nanite 内部处理高精度几何体的连续 LOD 过渡；Cesium Tile 切换使用屏幕空间抖动过渡（避免 popping）
 - **距离滞回区间**：加载距离 > 卸载距离 × 1.3（防止边界震荡）
 - **异步 LOD 切换**：新 LOD 级别在后台加载完成后 blend-in
+- **World Partition 集成**：UE5 World Partition 自动管理大世界分区加载，替代传统 Streaming Level
 
 ### 2.2 视锥裁剪 + 距离衰减
 
@@ -109,33 +113,34 @@ float CalculateSSE(Vector3 worldPos, float pixelSize, float distance)
 ```
 
 **实现方案：**
-- 使用 **Hierarchical Z-Buffer (Hi-Z)** 进行 GPU 端快速裁剪
+- 使用 **UE5 原生 Hierarchical Z-Buffer (Hi-Z)** 进行 GPU 端快速遮挡剔除（集成于 UE5 渲染管线）
 - CPU 端使用 **AABB Tree** 对 Tile 进行预筛选
 - 视锥体扩展 15% 余量，防止快速转向时出现空白
+- **Nanite 自动处理网格级剔除**：Nanite 虚拟几何体系统内置高效的实例剔除（Instance Culling）和三角形剔除
 
 #### 距离衰减（Distance-Based Culling）
 
-```csharp
-// 基于距离和 LOD 的综合衰减
-float CalculateRenderWeight(Tile tile, Camera cam)
+```cpp
+// 基于距离和 LOD 的综合衰减 (UE5 C++)
+float ADynastyTerrainActor::CalculateRenderWeight(const FTileData& Tile, const APlayerCameraManager* Camera)
 {
-    float distance = Vector3.Distance(tile.center, cam.position);
-    float screenArea = tile.screenProjectedArea;
+    float Distance = FVector::Dist(Tile.Center, Camera->GetCameraLocation());
+    float ScreenArea = Tile.ScreenProjectedArea;
     
     // 距离衰减因子：越远权重越低
-    float distanceFade = 1.0f / (1.0f + distance * distanceFadeFactor);
+    float DistanceFade = 1.0f / (1.0f + Distance * DistanceFadeFactor);
     
     // 屏幕空间面积：占屏幕面积比例
-    float screenWeight = screenArea / (screenWidth * screenHeight);
+    float ScreenWeight = ScreenArea / (ScreenWidth * ScreenHeight);
     
-    return distanceFade * screenWeight;
+    return DistanceFade * ScreenWeight;
 }
 
 // 权重低于阈值 → 进入卸载队列
 // 权重低于 2x 阈值 → 降级到低 LOD
 // 权重高于阈值 → 保持/升级 LOD
-const float CULL_THRESHOLD = 0.001f;    // 屏幕占比 0.1%
-const float DOWNGRADE_THRESHOLD = 0.002f;
+constexpr float CULL_THRESHOLD = 0.001f;    // 屏幕占比 0.1%
+constexpr float DOWNGRADE_THRESHOLD = 0.002f;
 ```
 
 ### 2.3 异步加载队列
@@ -226,30 +231,34 @@ const float DOWNGRADE_THRESHOLD = 0.002f;
 
 #### 内存压力响应策略
 
-```csharp
-enum MemoryPressureLevel
+```cpp
+// UE5 C++: 内存压力响应
+enum class EMemoryPressureLevel : uint8
 {
     Normal,     // > 80% 可用 → 正常加载
     Caution,    // 60-80% 可用 → 停止预取
     Warning,    // 40-60% 可用 → 卸载远处 LOD，降低纹理质量
     Critical    // < 40% 可用 → 强制卸载所有非视锥内资源
-}
+};
 
-void OnMemoryPressure(MemoryPressureLevel level)
+void ADynastyStreamingManager::OnMemoryPressure(EMemoryPressureLevel Level)
 {
-    switch (level)
+    switch (Level)
     {
-        case MemoryPressureLevel.Caution:
-            streamingScheduler.StopPreloading();
+        case EMemoryPressureLevel::Caution:
+            StreamingScheduler->StopPreloading();
             break;
-        case MemoryPressureLevel.Warning:
-            streamingScheduler.ForceUnloadFarTiles(2.0f); // 卸载 2x 距离外
-            QualitySettings.masterTextureLimit = 1; // 半分辨率纹理
+        case EMemoryPressureLevel::Warning:
+            StreamingScheduler->ForceUnloadFarTiles(2.0f); // 卸载 2x 距离外
+            // UE5: 降低 Virtual Texture Mip 偏差
+            GVirtualTextureMipBias = 1; // 半分辨率纹理
             break;
-        case MemoryPressureLevel.Critical:
-            streamingScheduler.ForceUnloadFarTiles(1.0f);
-            DisableShadows();
-            QualitySettings.masterTextureLimit = 2; // 1/4 分辨率纹理
+        case EMemoryPressureLevel::Critical:
+            StreamingScheduler->ForceUnloadFarTiles(1.0f);
+            GetRendererModule()->OverridePostProcessSettings(TEXT("DisableShadows"), true);
+            GVirtualTextureMipBias = 2; // 1/4 分辨率纹理
+            break;
+        default:
             break;
     }
 }
@@ -259,81 +268,79 @@ void OnMemoryPressure(MemoryPressureLevel level)
 
 ## 三、渲染优化
 
-### 3.1 GPU Instancing 策略
+### 3.1 Nanite + Instance Culling 策略
 
 #### 应用场景
 
-| 对象类型 | Instancing 方式 | 典型实例数 | 优化效果 |
-|----------|----------------|------------|----------|
-| 植被（树木/草地） | GPU Instancing | 50,000+ | Draw Call -99% |
-| 建筑窗户 | GPU Instancing | 10,000+ | Draw Call -95% |
-| 车辆（交通流） | GPU Instancing + Animation | 500-2,000 | Draw Call -90% |
-| 路面标线 | GPU Instancing | 5,000+ | Draw Call -80% |
-| 粒子（雨/雪） | Instanced Indirect | 100,000+ | GPU 亲和性优化 |
+Nanite 虚拟几何体系统自动处理大部分几何体的 LOD 和剔除，结合 UE5 原生 Instance Culling 实现大规模实例渲染。
+
+| 对象类型 | 渲染方式 | 典型实例数 | 优化效果 |
+|----------|----------|------------|----------|
+| 植被（树木/草地） | Nanite + Hierarchical LOD | 50,000+ | 三角形减少 90%+ |
+| 建筑窗户 | Nanite 虚拟化 | 10,000+ | 自动 LOD，无额外 Draw Call |
+| 车辆（交通流） | Instanced Static Mesh + Anim | 500-2,000 | Instance Culling -90% |
+| 路面标线 | Instanced Static Mesh | 5,000+ | Instance Culling -80% |
+| 粒子（雨/雪） | Niagara Instanced System | 100,000+ | GPU 亲和性优化 |
 
 #### 实现要点
 
 ```hlsl
-// GPU Instancing Vertex Shader
+// UE5 Custom Vertex Shader (Nanite 兼容)
 // 支持：位置/旋转/缩放每实例不同
-struct appdata
-{
-    float4 vertex : POSITION;
-    float3 normal : NORMAL;
-    float4 color : COLOR;
-    uint instanceID : SV_InstanceID;
-};
+// 注意：Nanite 网格使用 Nanite 内部管线，此 shader 用于非 Nanite 实例
 
-struct v2f
-{
-    float4 pos : SV_POSITION;
-    float3 worldNormal : TEXCOORD0;
-    float4 color : TEXCOORD1;
-};
+// Instance Data Buffer (UE5 Structured Buffer)
+StructuredBuffer<FInstanceData> InstanceDataBuffer;
 
-// Instance Data Buffer (StructuredBuffer)
-StructuredBuffer<InstanceData> _InstanceBuffer;
-
-v2f vert(appdata v)
+void MainVS(
+    in float3 InPosition : ATTRIBUTE0,
+    in float3 InNormal : ATTRIBUTE2,
+    in float4 InColor : ATTRIBUTE6,
+    in uint InstanceID : SV_InstanceID,
+    out float4 OutPosition : SV_POSITION,
+    out float3 OutWorldNormal : TEXCOORD0,
+    out float4 OutColor : TEXCOORD1)
 {
-    InstanceData data = _InstanceBuffer[v.instanceID];
+    FInstanceData Data = InstanceDataBuffer[InstanceID];
     
-    float3 worldPos = mul(unity_ObjectToWorld, v.vertex).xyz;
-    worldPos = worldPos * data.scale + data.position;
+    float3 WorldPos = mul(float4(InPosition, 1.0f), Data.Transform).xyz;
+    WorldPos = WorldPos * Data.Scale + Data.Position;
     
-    v2f o;
-    o.pos = mul(UNITY_MATRIX_VP, float4(worldPos, 1.0));
-    o.worldNormal = mul(data.rotation, v.normal);
-    o.color = data.color;
-    return o;
+    OutPosition = mul(float4(WorldPos, 1.0f), GetViewProjectionMatrix());
+    OutWorldNormal = mul(float4(InNormal, 0.0f), Data.Rotation).xyz;
+    OutColor = Data.Color;
 }
 ```
 
-#### 距离场 LOD (GPU Instancing LOD)
+#### 距离场 LOD (Nanite 自动 + 传统混合)
 
 ```
-近距离 → 高模 (300 tris/instance)
-中距离 → 中模 (80 tris/instance)
-远距离 → 低模 (12 tris/instance / BillBoard)
+近距离 → Nanite 高精度网格 (自动三角形精简)
+中距离 → Nanite 自动 LOD + 传统 LOD 过渡
+远距离 → 传统 LOD (12 tris/instance) / Billboard (Impostor)
 ```
 
-### 3.2 Occlusion Culling 方案
+Nanite 自动处理连续 LOD 过渡，无需手动设置 LOD 层级。对于不支持 Nanite 的材质（如透明材质），使用传统 LOD + Hierarchical LOD (HLOD) 系统。
+
+### 3.2 Occlusion Culling 方案（UE5 原生）
 
 #### 多层级遮挡剔除
 
+UE5 内置高效的 Occlusion Culling 系统，基于 Hierarchical Z-Buffer (HZB) 实现 GPU 驱动的遮挡剔除。
+
 ```
 ┌──────────────────────────────────────────────────────┐
-│  Level 0: Hi-Z Buffer Occlusion (GPU)               │
-│  - 每帧生成 Hi-Z 深度金字塔                          │
-│  - CPU 端使用 GPU Compute Shader 批量裁剪            │
+│  Level 0: UE5 Native GPU Occlusion (HZB)            │
+│  - UE5 渲染管线自动生成 HZB 深度金字塔              │
+│  - Compute Shader 批量遮挡查询                      │
 │  - 适合：建筑物、大型地形特征                        │
 │  - 开销：~0.3ms/frame (Compute)                     │
 ├──────────────────────────────────────────────────────┤
-│  Level 1: Software Occlusion (CPU)                   │
-│  - 使用 SIMD 优化的软件遮挡器                        │
-│  - 针对小物件（路灯、长椅等）                       │
-│  - 与 BVH 结合做层次化裁剪                          │
-│  - 开销：~0.5ms/frame                               │
+│  Level 1: Nanite 自动剔除 (GPU Driven)              │
+│  - Nanite 内部集群级别遮挡剔除                      │
+│  - 基于 GPU 可见性缓冲区 (Visibility Buffer)        │
+│  - 自动处理三角形级别剔除                           │
+│  - 开销：集成于 Nanite 管线                          │
 ├──────────────────────────────────────────────────────┤
 │  Level 2: Portal / Sector Culling (Engine)           │
 │  - 室内场景使用 Portal 系统                          │
@@ -343,38 +350,39 @@ v2f vert(appdata v)
 └──────────────────────────────────────────────────────┘
 ```
 
-#### Hi-Z Occlusion 实现
+#### Hi-Z Occlusion 实现（UE5 原生管线）
 
-```csharp
-// Hi-Z Buffer Pipeline
-// 1. 渲染深度 → Hi-Z 金字塔 (Mip Chain)
-// 2. 对每个候选对象的包围盒进行保守投影
-// 3. 在 Hi-Z 中查询 → 被遮挡则剔除
+```cpp
+// UE5 HZB Occlusion Pipeline
+// UE5 渲染管线自动生成 HZB，以下为自定义扩展逻辑
+// 用于 Cesium Tile 级别的额外遮挡剔除
 
-class HiZOcclusionCuller
+class FHiZOcclusionCuller
 {
-    ComputeShader hiZBuildShader;    // 构建 Hi-Z 金字塔
-    ComputeShader occlusionShader;   // 批量遮挡查询
+    FRHITexture2DRef DepthTexture;       // 场景深度 (UE5 自动维护)
+    TArray<FRHITexture2DRef> HiZPyramid; // HZB mip chain (UE5 自动构建)
     
-    RenderTexture depthTexture;      // 场景深度
-    RenderTexture hiZPyramid[];      // Hi-Z mip chain (12 levels)
-    
-    // 每帧
-    void Execute(FrameData frame)
+    // 每帧执行
+    void Execute(const FFrameData& Frame)
     {
-        // Pass 1: 复制深度到 Hi-Z
-        Graphics.Blit(frame.depthBuffer, hiZPyramid[0]);
-        
+        // UE5 自动完成 HZB 构建：
+        // Pass 1: 渲染深度 → HZB Mip 0
         // Pass 2: 逐级下采样构建金字塔
-        for (int i = 1; i < 12; i++)
-            hiZBuildShader.Dispatch(hiZPyramid[i-1], hiZPyramid[i]);
+        // 此处仅执行额外的 Tile 级别批量查询
         
-        // Pass 3: 批量遮挡查询
-        occlusionShader.SetTexture(0, "_HiZPyramid", hiZPyramid);
-        occlusionShader.SetBuffer(0, "_AABBs", candidateBounds);
-        occlusionShader.Dispatch(candidateCount / 64);
+        // Pass 3: 对 Cesium Tile 批量遮挡查询
+        ENQUEUE_RENDER_COMMAND(HiZOcclusionQuery)(
+            [this, &Frame](FRHICommandListImmediate& RHICmdList)
+            {
+                FRHIComputeShader* QueryShader = OcclusionQueryShader->GetShader<RHIComputeShader>();
+                RHICmdList.SetComputeShader(QueryShader);
+                RHICmdList.SetSamplers(0, HiZSamplerStates);
+                RHICmdList.SetTexture(0, HiZPyramid[0]);
+                RHICmdList.SetStructuredBuffer(0, CandidateBoundsBuffer);
+                RHICmdList.Dispatch(NumCandidates / 64, 1, 1);
+            });
     }
-}
+};
 ```
 
 #### 遮挡剔除效果预估
@@ -385,11 +393,11 @@ class HiZOcclusionCuller
 | 自然风景 | 200,000 | 80,000 | 55,000 | 72.5% |
 | 太空视角 | 10,000 | 10,000 | 8,000 | 20.0% |
 
-### 3.3 Virtual Texturing
+### 3.3 UE5 Virtual Texture
 
 #### 设计概述
 
-Virtual Texturing (VT) 将海量纹理虚拟化为一个巨大的虚拟纹理空间，按需加载纹素（texel）到 GPU 显存。
+UE5 Virtual Texture 将海量纹理虚拟化为一个巨大的虚拟纹理空间，按需加载纹素（texel）到 GPU 显存。UE5 原生支持运行时 Virtual Texture (Runtime VT)，可与 Nanite 材质无缝配合。
 
 ```
 ┌──────────────────────────────────────────────────────┐
@@ -428,39 +436,48 @@ Virtual Texturing (VT) 将海量纹理虚拟化为一个巨大的虚拟纹理空
 
 #### 实现流程
 
-```csharp
-// 每帧 VT 更新
-void UpdateVirtualTexture(Camera camera)
+```cpp
+// 每帧 UE5 Runtime Virtual Texture 更新
+void ADynastyVTManager::UpdateVirtualTexture(ULocalPlayer* LocalPlayer)
 {
     // 1. 从屏幕空间生成反馈 (Feedback Pass)
+    //    UE5 内置 Virtual Texture Feedback 系统
     //    → 记录每个像素访问的 VT 坐标和所需 Mip Level
-    ComputeBuffer feedbackBuffer = GenerateFeedback(camera);
+    FVirtualTextureFeedbackContext FeedbackCtx = GenerateRVTFeedback(LocalPlayer);
     
     // 2. 分析反馈 → 统计需要加载的 Page
-    var pagesNeeded = AnalyzeFeedback(feedbackBuffer);
+    TArray<FVTPageRequest> PagesNeeded = AnalyzeFeedback(FeedbackCtx);
     
     // 3. 优先级排序（按屏幕覆盖率）
-    pagesNeeded.SortByPriority();
+    PagesNeeded.Sort([](const FVTPageRequest& A, const FVTPageRequest& B) {
+        return A.Priority > B.Priority;
+    });
     
     // 4. 限制每帧加载量
-    var pagesToLoad = pagesNeeded.Take(MaxPagesPerFrame);
+    const int32 MaxPagesPerFrame = 16;
+    TArray<FVTPageRequest> PagesToLoad = PagesNeeded.Left(MaxPagesPerFrame);
     
     // 5. 从磁盘/网络加载 Page 数据
-    foreach (var page in pagesToLoad)
+    for (FVTPageRequest& Page : PagesToLoad)
     {
-        if (!physicalCache.Contains(page))
+        if (!PhysicalCache.Contains(Page.PageID))
         {
-            var data = LoadPageFromStreaming(page);
-            physicalCache.EvictAndInsert(page, data);
+            FVTPageData Data = LoadPageFromStreaming(Page);
+            PhysicalCache.EvictAndInsert(Page.PageID, Data);
         }
     }
     
-    // 6. 更新 Page Table → GPU Uniform Buffer
-    UpdatePageTableGPU(physicalCache);
+    // 6. 更新 UE5 Runtime Virtual Texture Page Table
+    UpdateRuntimeVTPages(PhysicalCache);
 }
 ```
 
-### 3.4 DLSS / FSR 集成
+### 3.4 UE5 Native 超分辨率集成（DLSS / FSR / XeSS 插件）
+
+UE5 通过原生插件集成各厂商超分辨率方案：
+- **Nvidia DLSS Plugin**（UE5 内置）
+- **AMD FSR Plugin**（UE5 内置）
+- **Intel XeSS Plugin**（第三方 UE5 插件）
 
 #### 技术方案对比
 
@@ -489,26 +506,28 @@ void UpdateVirtualTexture(Camera camera)
 └── Quest (内置): 避免使用，依赖内置超分
 ```
 
-#### 集成管线
+#### 集成管线（UE5 渲染管线）
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│  渲染管线 (Native Resolution)                            │
+│  UE5 渲染管线 (Native Resolution)                       │
 │                                                          │
-│  Scene Render → TAA/Jitter → DLSS/FSR Input             │
+│  Scene Render → TAA/Jitter → Temporal AA Buffer          │
 │       │                          │                       │
 │       ▼                          ▼                       │
-│  Color Buffer          Motion Vectors Buffer             │
-│  Depth Buffer          Exposure Buffer                   │
+│  SceneColor Buffer        Motion Vectors Buffer          │
+│  SceneDepth Buffer        Exposure Buffer                │
 │                                                          │
 │  ┌─────────────────────────────────────────────┐        │
-│  │  DLSS/FSR Upscale                          │        │
+│  │  UE5 原生 Upscale (通过插件 API)            │        │
 │  │  Input: 75% resolution → Output: 100%       │        │
 │  │  运动矢量 + 深度 → 抗鬼影                   │        │
+│  │  插件: NVIDIA DLSS / AMD FSR / Intel XeSS   │        │
 │  └─────────────────────────────────────────────┘        │
 │                                                          │
 │  ┌─────────────────────────────────────────────┐        │
-│  │  Foveated Rendering (眼动追踪联动)          │        │
+│  │  Dynamic Resolution Scaling (UE5 DRS)       │        │
+│  │  联动 Foveated Rendering (眼动追踪)          │        │
 │  │  中心 10%: 1.0x 分辨率                     │        │
 │  │  中间环: 0.75x 分辨率                      │        │
 │  │  外围 50%: 0.5x 分辨率                     │        │
@@ -599,37 +618,36 @@ message PlayerStateUpdate {
 
 #### 优先级计算
 
-```csharp
-enum PacketPriority
+```cpp
+// UE5 C++: 网络优先级枚举
+enum class EPacketPriority : uint8
 {
     Critical = 0,   // 立即发送，不可丢弃
     High = 1,       // 本帧发送
     Medium = 2,     // 下1-2帧
     Low = 3,        // 空闲时发送
     Background = 4  // 可合并、可丢弃
-}
+};
 
 // 基于距离和速度的优先级计算
-PacketPriority CalculatePriority(GameObject obj, Camera localCamera)
+EPacketPriority CalculatePriority(const AActor* Obj, const APlayerCameraManager* LocalCamera)
 {
-    float distance = Vector3.Distance(obj.position, localCamera.position);
-    float approachSpeed = Vector3.Dot(
-        obj.velocity, 
-        (localCamera.position - obj.position).normalized
-    );
+    float Distance = FVector::Dist(Obj->GetActorLocation(), LocalCamera->GetCameraLocation());
+    FVector ApproachVec = (LocalCamera->GetCameraLocation() - Obj->GetActorLocation()).GetSafeNormal();
+    float ApproachSpeed = FVector::DotProduct(Obj->GetVelocity(), ApproachVec);
     
     // 距离越近 + 迎面而来 → 优先级越高
-    float urgency = 0;
+    float Urgency = 0.0f;
     
-    if (distance < 10f) urgency = 100f;           // 10m 内: Critical
-    else if (distance < 50f) urgency = 80f;       // 50m: High
-    else if (distance < 200f) urgency = 50f;      // 200m: Medium
-    else urgency = 20f / (distance / 200f);       // 更远: Low
+    if (Distance < 10.0f) Urgency = 100.0f;           // 10m 内: Critical
+    else if (Distance < 50.0f) Urgency = 80.0f;       // 50m: High
+    else if (Distance < 200.0f) Urgency = 50.0f;      // 200m: Medium
+    else Urgency = 20.0f / (Distance / 200.0f);       // 更远: Low
     
     // 接近速度增加优先级
-    urgency += Mathf.Max(0, approachSpeed) * 10f;
+    Urgency += FMath::Max(0.0f, ApproachSpeed) * 10.0f;
     
-    return MapUrgencyToPriority(urgency);
+    return MapUrgencyToPriority(Urgency);
 }
 ```
 
@@ -669,82 +687,93 @@ PacketPriority CalculatePriority(GameObject obj, Camera localCamera)
 
 #### 客户端预测（Client-Side Prediction）
 
-```csharp
-// 本地玩家移动预测
-class ClientPrediction
+```cpp
+// UE5 C++: 本地玩家移动预测
+class FClientPrediction
 {
-    Queue<InputCommand> pendingInputs;
-    TransformState lastServerState;
+    TQueue<FInputCommand> PendingInputs;
+    FTransformState LastServerState;
     
-    void OnLocalPlayerMove(Input input, float deltaTime)
+    void OnLocalPlayerMove(const FInputActionValue& Input, float DeltaTime)
     {
         // 1. 立即应用预测位置
-        var predictedState = ApplyMovement(localPlayer.state, input, deltaTime);
-        localPlayer.transform.position = predictedState.position;
+        FPredictedState PredictedState = ApplyMovement(LocalPlayer->GetState(), Input, DeltaTime);
+        LocalPlayer->SetActorLocation(PredictedState.Position);
         
         // 2. 保存命令待确认
-        pendingInputs.Enqueue(new InputCommand
-        {
-            input = input,
-            timestamp = GetNetworkTime(),
-            sequenceId = nextSeq++
-        });
+        FInputCommand Cmd;
+        Cmd.Input = Input;
+        Cmd.Timestamp = GetNetworkTime();
+        Cmd.SequenceId = NextSeq++;
+        PendingInputs.Enqueue(Cmd);
         
         // 3. 发送到服务器
-        SendToServer(input, sequenceId);
+        SendToServer(Input, NextSeq);
     }
     
-    void OnServerReconcile(ServerState serverState)
+    void OnServerReconcile(const FServerState& ServerState)
     {
-        lastServerState = serverState;
+        LastServerState = ServerState;
         
         // 移除已确认的输入
-        while (pendingInputs.Peek().sequenceId <= serverState.lastAckedSeq)
-            pendingInputs.Dequeue();
+        while (!PendingInputs.IsEmpty())
+        {
+            FInputCommand PeekCmd;
+            PendingInputs.Peek(PeekCmd);
+            if (PeekCmd.SequenceId <= ServerState.LastAckedSeq)
+                PendingInputs.Dequeue();
+            else
+                break;
+        }
         
         // 从服务器状态重放未确认输入
-        var correctedState = serverState.playerState;
-        foreach (var cmd in pendingInputs)
+        FCorrectedState CorrectedState = ServerState.PlayerState;
+        for (const FInputCommand& Cmd : PendingInputs)
         {
-            correctedState = ApplyMovement(correctedState, cmd.input, dt);
+            CorrectedState = ApplyMovement(CorrectedState, Cmd.Input, DeltaTime);
         }
         
         // 平滑纠正到纠正后的位置（避免 popping）
-        localPlayer.SnapCorrection(correctedState.position, correctionDistance: 0.5f);
+        LocalPlayer->SnapCorrection(CorrectedState.Position, 0.5f);
     }
-}
+};
 ```
 
 #### 他人位置插值（Remote Player Interpolation）
 
-```csharp
-// 远程玩家：接收服务器状态 → 插值显示
-class RemotePlayerInterpolation
+```cpp
+// UE5 C++: 远程玩家接收服务器状态 → 插值显示
+class ARemotePlayerInterpolation : public AActor
 {
-    const float INTERPOLATION_DELAY = 0.1f; // 100ms 延迟插值
+    static constexpr float INTERPOLATION_DELAY = 0.1f; // 100ms 延迟插值
     
-    Queue<StateSnapshot> stateBuffer;
+    TArray<FStateSnapshot> StateBuffer;
     
-    void Update()
+    virtual void Tick(float DeltaTime) override
     {
-        float renderTime = GetNetworkTime() - INTERPOLATION_DELAY;
+        float RenderTime = GetNetworkTime() - INTERPOLATION_DELAY;
         
         // 找到 renderTime 前后的两个快照
-        var prev = stateBuffer.Last(s => s.timestamp <= renderTime);
-        var next = stateBuffer.First(s => s.timestamp >= renderTime);
+        FStateSnapshot* Prev = nullptr;
+        FStateSnapshot* Next = nullptr;
+        for (auto& Snap : StateBuffer)
+        {
+            if (Snap.Timestamp <= RenderTime) Prev = &Snap;
+            if (Snap.Timestamp >= RenderTime && !Next) Next = &Snap;
+        }
+        if (!Prev || !Next) return;
         
-        float t = (renderTime - prev.timestamp) / (next.timestamp - prev.timestamp);
+        float T = (RenderTime - Prev->Timestamp) / (Next->Timestamp - Prev->Timestamp);
         
         // Hermite 插值（平滑曲线）
-        transform.position = HermiteInterpolate(
-            prev.position, prev.velocity,
-            next.position, next.velocity,
-            t
-        );
-        transform.rotation = Slerp(prev.rotation, next.rotation, t);
+        SetActorLocation(HermiteInterpolate(
+            Prev->Position, Prev->Velocity,
+            Next->Position, Next->Velocity,
+            T
+        ));
+        SetActorRotation(FMath::Slerp(Prev->Rotation, Next->Rotation, T));
     }
-}
-}
+};
 
 // 位置外推（应对丢包）
 // 如果超时未收到更新 → 根据最后速度外推
@@ -781,7 +810,7 @@ class RemotePlayerInterpolation
 
 ### 5.1 硬件档位划分
 
-#### Tier 1: Standalone VR (Quest 2/3)
+#### Tier 1: Standalone VR (Quest 2/3) — OpenXR + UE5 VR Template
 
 | 配置项 | Quest 2 (最低) | Quest 3 (推荐) |
 |--------|----------------|----------------|
@@ -791,12 +820,14 @@ class RemotePlayerInterpolation
 | 分辨率 | 1832×1920/眼 | 2064×2208/眼 |
 | 刷新率 | 72/90 Hz | 90/120 Hz |
 | 渲染分辨率 | 0.7x (1282×1344) | 1.0x (原生) |
-| 纹理质量 | 低 (512px max) | 中 (1024px max) |
-| 阴影 | 烘焙 + 简单实时 | PCSS 软阴影 |
-| 后处理 | Bloom + Tonemapping | Bloom + Tonemapping + AO |
-| 植被密度 | 30% | 60% |
-| 地形 LOD | L5 最高 | L7 最高 |
+| 纹理质量 | 低 (512px max) | 中 (1024px max + Virtual Texture) |
+| 阴影 | 烘焙 + 简单实时 | Lumen 低精度 / PCSS 软阴影 |
+| 后处理 | Bloom + Tonemapping | Bloom + Tonemapping + Lumen GI |
+| 植被密度 | 30% | 60% (Nanite 低精度) |
+| 地形 LOD | L5 最高 | L7 最高 (Nanite 自动) |
 | AI 人数 | 10-20 | 30-50 |
+| XR 运行时 | OpenXR (Meta Quest Runtime) | OpenXR (Meta Quest Runtime) |
+| UE5 模板 | VR Template (Mobile Forward) | VR Template (Mobile Forward) |
 
 **Quest 2 降级策略：**
 - 启用 Fixed Foveated Rendering (FFR) Level 2
@@ -805,7 +836,7 @@ class RemotePlayerInterpolation
 - 降低 LOD 切换距离
 - 压缩纹理格式 (ETC2/ASTC)
 
-#### Tier 2: PC VR (标准)
+#### Tier 2: PC VR (标准) — OpenXR + UE5 VR Template
 
 | 配置项 | 最低配置 | 推荐配置 |
 |--------|----------|----------|
@@ -816,12 +847,14 @@ class RemotePlayerInterpolation
 | 存储 | SSD 512 GB | NVMe SSD 1 TB |
 | 头显 | Quest 2 Link | Quest 3 / Valve Index |
 | 渲染分辨率 | 1.0x (头显原生) | 1.2x (超采样) |
-| 纹理质量 | 高 | 极高 |
-| 阴影 | Contact Shadows + PCSS | Ray Traced Shadows |
-| 反射 | SSR | Ray Traced Reflections |
-| DLSS/FSR | Quality Mode | Ultra Quality |
-| 地形 LOD | L8 最高 | L9 最高 |
+| 纹理质量 | 高 (Virtual Texture) | 极高 (Virtual Texture) |
+| 阴影 | Contact Shadows + PCSS | Lumen Dynamic GI + RT Shadows |
+| 反射 | SSR | Lumen Reflections |
+| 全局光照 | Lumen (Software Mode) | Lumen (Hardware RT Mode) |
+| DLSS/FSR/XeSS 插件 | Quality Mode | Ultra Quality (UE5 原生插件) |
+| 地形 LOD | L8 最高 (Nanite 自动) | L9 最高 (Nanite 自动) |
 | AI 人数 | 50-100 | 200+ |
+| XR 运行时 | OpenXR (SteamVR / Meta) | OpenXR (SteamVR / Meta) |
 
 #### Tier 3: 高配 PC (旗舰)
 
@@ -834,14 +867,15 @@ class RemotePlayerInterpolation
 | 存储 | NVMe SSD 2 TB |
 | 头显 | Quest 3 / Bigscreen Beyond / Pimax |
 | 渲染分辨率 | 1.5x (超级采样) |
-| 纹理质量 | 极高 + Virtual Texturing |
-| 光追 | 全光追 (RTXDI 多光源) |
-| DLSS | Performance Mode (仍保持 >120fps) |
-| 地形 LOD | L9 最高 |
+| 纹理质量 | 极高 + UE5 Virtual Texture |
+| 全局光照 | Lumen (Full RT Mode) + Nanite |
+| 光追 | 全光追 (Lumen + RTXDI 多光源) |
+| DLSS 插件 | Performance Mode (UE5 原生, 仍保持 >120fps) |
+| 地形 LOD | L9 最高 (Nanite 无限精度) |
 | AI 人数 | 500+ |
-| 特殊效果 | 全体积雾 / 光线重建 / 路径追踪 |
+| 特殊效果 | 全体积雾 / Nanite 几何 / Lumen 路径追踪 |
 
-#### Tier 4: 移动端降级模式 (手机/平板)
+#### Tier 4: 移动端降级模式 (手机/平板) — UE5 Mobile Forward Renderer
 
 | 配置项 | 最低配置 | 推荐配置 |
 |--------|----------|----------|
@@ -852,64 +886,67 @@ class RemotePlayerInterpolation
 | 目标帧率 | 30 fps (24 fps 最低) | 30 fps |
 | 地形 LOD | L5 最高 | L7 最高 |
 | 纹理 | 512px + ASTC | 1024px + ASTC |
-| 光照 | 预计算 GI + 1 盏实时光 | 预计算 GI + 3 盏实时光 |
+| 光照 | 预计算 GI (Lightmass) + 1 盏实时光 | 预计算 GI + 3 盏实时光 |
 | 阴影 | 烘焙 | 烘焙 + 简单实时 |
 | 后处理 | Tonemapping | Bloom + Tonemapping |
 | 云层 | Billboard 云 | 程序化体积云（低采样） |
 | 海洋 | 静态反射 | 简单波浪 + FFT |
-| 植被 | BillBoard | 简单 Mesh |
+| 植被 | Billboard Impostor | 简单 Mesh (不使用 Nanite) |
+| XR 运行时 | OpenXR | OpenXR |
 
 ### 5.2 自动质量调节系统
 
-```csharp
-// 运行时动态质量调节
-class AutoQualitySystem
+```cpp
+// UE5 C++: 运行时动态质量调节 (UE5 Dynamic Resolution System)
+class UAutoQualitySystem : public UGameInstanceSubsystem
 {
-    float targetFrameTime;  // 目标帧时间 (ms)
-    float currentFrameTime;
-    int qualityLevel;       // 0 (最低) ~ 10 (最高)
+    float TargetFrameTime;  // 目标帧时间 (ms)
+    float CurrentFrameTime;
+    int32 QualityLevel;     // 0 (最低) ~ 10 (最高)
     
     // 监控性能
-    void Update()
+    virtual void Tick(float DeltaTime) override
     {
-        currentFrameTime = Time.unscaledDeltaTime * 1000f;
-        float ratio = currentFrameTime / targetFrameTime;
+        CurrentFrameTime = DeltaTime * 1000.0f;
+        float Ratio = CurrentFrameTime / TargetFrameTime;
         
         // 持续 30 帧低于目标 → 降级
-        if (ratio > 1.15f && belowTargetFrames > 30)
+        if (Ratio > 1.15f && BelowTargetFrames > 30)
             DecreaseQuality(1);
         
         // 持续 120 帧高于目标 → 升级
-        if (ratio < 0.85f && aboveTargetFrames > 120)
+        if (Ratio < 0.85f && AboveTargetFrames > 120)
             IncreaseQuality(1);
     }
     
     // 质量级别对应的设置
-    QualityPreset GetPreset(int level)
+    FQualityPreset GetPreset(int32 Level) const
     {
-        return presets[Mathf.Clamp(level, 0, 10)];
+        return Presets[FMath::Clamp(Level, 0, 10)];
     }
-}
+};
 
 // 10 级质量预设表
 // Level 0 (极低) ──── Level 5 (中) ──── Level 10 (极高)
-// Texture: 256px      Texture: 1024px   Texture: 4096px
-// Shadow: Off         Shadow: PCSS      Shadow: RT
-// LOD: 2km max        LOD: 10km max     LOD: 无限
+// Texture: 256px      Texture: 1024px   Texture: 4096px (Virtual Texture)
+// Shadow: Off         Shadow: PCSS      Shadow: Lumen RT
+// LOD: 2km max        LOD: 10km max     LOD: Nanite 无限
 // Vegetation: 10%     Vegetation: 50%   Vegetation: 100%
 // PostFX: Tonemap     PostFX: +Bloom    PostFX: Full chain
+// Nanite: Low         Nanite: Medium    Nanite: Max triangles
 ```
 
 ### 5.3 性能分析与调试工具
 
 | 工具 | 用途 | 集成方式 |
 |------|------|----------|
-| Unity Profiler | CPU/GPU 帧分析 | 内置 |
+| Unreal Insights | CPU/GPU 帧分析 + Trace 系统 | UE5 内置 |
 | RenderDoc | GPU 帧捕获 | 外部 |
-| NVIDIA Nsight | GPU 深度分析 | PC VR 开发 |
-| Oculus Debug Tool | Quest 性能分析 | Quest 开发 |
-| Unity Frame Debugger | 渲染流程分析 | 内置 |
-| 自定义 Stats Overlay | 实时帧率/内存/网络 HUD | Runtime |
+| NVIDIA Nsight Graphics | GPU 深度分析 | PC VR 开发 |
+| Oculus Debug Tool (Meta Quest) | Quest 性能分析 | Quest 开发 |
+| UE5 GPU Visualizer | 渲染流程分析 (stat gpu) | UE5 内置 |
+| stat 命令 (stat unit, stat rhi, stat scene) | 实时性能面板 | UE5 内置 |
+| 自定义 Stats Overlay | 实时帧率/内存/网络 HUD | Runtime Widget |
 | Telemetry Logger | 云端性能数据收集 | 后端集成 |
 
 #### Runtime Stats Overlay
@@ -1000,7 +1037,9 @@ performance_ci:
 
 ---
 
-> **文档版本：** v1.0
+> **文档版本：** v2.0 (UE5)
 > **最后更新：** 2026-03-18
+> **引擎版本：** Unreal Engine 5.4+
+> **XR 框架：** OpenXR + UE5 VR Template
 > **性能工程组：** EV 元宇宙部
-> **审阅状态：** 初稿，待陛下御览
+> **审阅状态：** 已迁移至 UE5，待陛下御览
